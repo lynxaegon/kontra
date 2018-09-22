@@ -21,11 +21,12 @@
   };
 
   addEventListener('mousedown', pointerDownHandler);
-  addEventListener('touchstart', pointerDownHandler);
+  addEventListener('touchstart', pointerDownHandler, { passive: false });
   addEventListener('mouseup', pointerUpHandler);
-  addEventListener('touchend', pointerUpHandler);
+  addEventListener('touchend', pointerUpHandler, { passive: false });
   addEventListener('blur', blurEventHandler);
   addEventListener('mousemove', mouseMoveHandler);
+  addEventListener('touchmove', touchMoveHandler, { passive: false });
 
   /**
    * Detection collision between a rectangle and a circle.
@@ -102,6 +103,16 @@
     pointerHandler(e, 'onOver');
   }
 
+	/**
+	 * Track the position of the touch.
+	 * @private
+	 *
+	 * @param {Event} e
+	 */
+	function touchMoveHandler(e) {
+		pointerHandler(e, 'onOver');
+	}
+
   /**
    * Reset pressed buttons.
    * @private
@@ -120,6 +131,7 @@
    * @param {string} event - Which event was called.
    */
   function pointerHandler(e, event) {
+  	e.preventDefault();
     if (!kontra.canvas) return;
 
     let clientX, clientY;
@@ -138,6 +150,17 @@
     pointer.x = clientX - kontra.canvas.offsetLeft;
     pointer.y = clientY - kontra.canvas.offsetTop;
 
+	let el = kontra.canvas;
+	while ( (el = el.offsetParent) ) {
+		pointer.x -= el.offsetLeft;
+		pointer.y -= el.offsetTop;
+	}
+
+	// take into account the canvas scale
+	let scale = kontra.canvas.offsetHeight / kontra.canvas.height;
+	pointer.x /= scale;
+	pointer.y /= scale;
+
     let object;
     if (e.target === kontra.canvas) {
       object = getCurrentObject();
@@ -146,9 +169,16 @@
       }
     }
 
+    if(event == "onOver"){
+    	event = "onMove";
+	}
+
     if (callbacks[event]) {
       callbacks[event](e, object);
     }
+
+
+
   }
 
   /**
@@ -169,7 +199,7 @@
       [].concat(objects).map(function(object) {
 
         // override the objects render function to keep track of render order
-        if (!object._r) {
+        if (object && !object._r) {
           object._r = object.render;
 
           object.render = function() {
@@ -192,9 +222,10 @@
       [].concat(objects).map(function(object) {
 
         // restore original render function to no longer track render order
-        object.render = object._r;
-        object._r = undefined;
-
+		  if(object && object._r) {
+			  object.render = object._r;
+			  object._r = undefined;
+		  }
         let index = trackedObjects.indexOf(object);
         if (index !== -1) {
           trackedObjects.splice(index, 1);
@@ -226,6 +257,16 @@
       callbacks.onDown = callback;
     },
 
+	  /**
+	   * Register a function to be called on pointer move.
+	   * @memberof kontra.pointer
+	   *
+	   * @param {function} callback - Function to execute
+	   */
+	  onMove(callback) {
+		  callbacks.onMove = callback;
+	  },
+
     /**
      * Register a function to be called on pointer up.
      * @memberof kontra.pointer
@@ -246,7 +287,12 @@
      */
     pressed(button) {
       return !!pressedButtons[button]
-    }
+    },
+
+    destroy(){
+    	trackedObjects = [];
+		callbacks = {};
+	}
   };
 
   // reset object render order on every new frame
