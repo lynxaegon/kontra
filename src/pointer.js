@@ -153,12 +153,14 @@
 		  if (touchID == -1 && e.touches[0]) {
 			  touchID = e.touches[0].identifier;
 		  } else if (event == "onUp") {
-			  if (e.changedTouches[0].identifier == touchID) {
-				  touchID = -1;
-			  }
-			  else {
-				  return;
-			  }
+		  	for(var i in e.changedTouches){
+		  		if(e.changedTouches[i].identifier == touchID){
+					touchID = -1;
+				}
+			}
+			if(touchID !== -1){
+		  		return;
+			}
 		  }
 	  }
     }
