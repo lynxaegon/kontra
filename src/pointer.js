@@ -13,6 +13,8 @@
   let callbacks = {};
   let trackedObjects = [];
   let pressedButtons = {};
+  let touchID = -1;
+  let multiTouchEnabled = false;
 
   let buttonMap = {
     0: 'left',
@@ -133,6 +135,7 @@
   function pointerHandler(e, event) {
   	e.preventDefault();
     if (!kontra.canvas) return;
+    if(touchID != -1 && event == "onDown") return;
 
     let clientX, clientY;
 
@@ -141,10 +144,23 @@
       clientY = e.clientY;
     }
     else {
-      // touchstart uses touches while touchend uses changedTouches
+		// touchstart uses touches while touchend uses changedTouches
       // @see https://stackoverflow.com/questions/17957593/how-to-capture-touchend-coordinates
       clientX = (e.touches[0] || e.changedTouches[0]).clientX;
       clientY = (e.touches[0] || e.changedTouches[0]).clientY;
+
+      if(!multiTouchEnabled) {
+		  if (touchID == -1 && e.touches[0]) {
+			  touchID = e.touches[0].identifier;
+		  } else if (event == "onUp") {
+			  if (e.changedTouches[0].identifier == touchID) {
+				  touchID = -1;
+			  }
+			  else {
+				  return;
+			  }
+		  }
+	  }
     }
 
     pointer.x = clientX - kontra.canvas.offsetLeft;
@@ -292,6 +308,10 @@
     destroy(){
     	trackedObjects = [];
 		callbacks = {};
+	},
+
+	multitouch(val){
+	  multiTouchEnabled = val;
 	}
   };
 

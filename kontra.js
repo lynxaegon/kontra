@@ -478,6 +478,8 @@ kontra = {
   let callbacks = {};
   let trackedObjects = [];
   let pressedButtons = {};
+  let touchID = -1;
+  let multiTouchEnabled = false;
 
   let buttonMap = {
     0: 'left',
@@ -486,11 +488,12 @@ kontra = {
   };
 
   addEventListener('mousedown', pointerDownHandler);
-  addEventListener('touchstart', pointerDownHandler);
+  addEventListener('touchstart', pointerDownHandler, { passive: false });
   addEventListener('mouseup', pointerUpHandler);
-  addEventListener('touchend', pointerUpHandler);
+  addEventListener('touchend', pointerUpHandler, { passive: false });
   addEventListener('blur', blurEventHandler);
   addEventListener('mousemove', mouseMoveHandler);
+  addEventListener('touchmove', touchMoveHandler, { passive: false });
 
   /**
    * Detection collision between a rectangle and a circle.
@@ -567,6 +570,16 @@ kontra = {
     pointerHandler(e, 'onOver');
   }
 
+	/**
+	 * Track the position of the touch.
+	 * @private
+	 *
+	 * @param {Event} e
+	 */
+	function touchMoveHandler(e) {
+		pointerHandler(e, 'onOver');
+	}
+
   /**
    * Reset pressed buttons.
    * @private
@@ -585,7 +598,9 @@ kontra = {
    * @param {string} event - Which event was called.
    */
   function pointerHandler(e, event) {
+  	e.preventDefault();
     if (!kontra.canvas) return;
+    if(touchID != -1 && event == "onDown") return;
 
     let clientX, clientY;
 
@@ -594,14 +609,38 @@ kontra = {
       clientY = e.clientY;
     }
     else {
-      // touchstart uses touches while touchend uses changedTouches
+		// touchstart uses touches while touchend uses changedTouches
       // @see https://stackoverflow.com/questions/17957593/how-to-capture-touchend-coordinates
       clientX = (e.touches[0] || e.changedTouches[0]).clientX;
       clientY = (e.touches[0] || e.changedTouches[0]).clientY;
+
+      if(!multiTouchEnabled) {
+		  if (touchID == -1 && e.touches[0]) {
+			  touchID = e.touches[0].identifier;
+		  } else if (event == "onUp") {
+			  if (e.changedTouches[0].identifier == touchID) {
+				  touchID = -1;
+			  }
+			  else {
+				  return;
+			  }
+		  }
+	  }
     }
 
     pointer.x = clientX - kontra.canvas.offsetLeft;
     pointer.y = clientY - kontra.canvas.offsetTop;
+
+	let el = kontra.canvas;
+	while ( (el = el.offsetParent) ) {
+		pointer.x -= el.offsetLeft;
+		pointer.y -= el.offsetTop;
+	}
+
+	// take into account the canvas scale
+	let scale = kontra.canvas.offsetHeight / kontra.canvas.height;
+	pointer.x /= scale;
+	pointer.y /= scale;
 
     let object;
     if (e.target === kontra.canvas) {
@@ -611,9 +650,16 @@ kontra = {
       }
     }
 
+    if(event == "onOver"){
+    	event = "onMove";
+	}
+
     if (callbacks[event]) {
       callbacks[event](e, object);
     }
+
+
+
   }
 
   /**
@@ -634,7 +680,7 @@ kontra = {
       [].concat(objects).map(function(object) {
 
         // override the objects render function to keep track of render order
-        if (!object._r) {
+        if (object && !object._r) {
           object._r = object.render;
 
           object.render = function() {
@@ -657,9 +703,10 @@ kontra = {
       [].concat(objects).map(function(object) {
 
         // restore original render function to no longer track render order
-        object.render = object._r;
-        object._r = undefined;
-
+		  if(object && object._r) {
+			  object.render = object._r;
+			  object._r = undefined;
+		  }
         let index = trackedObjects.indexOf(object);
         if (index !== -1) {
           trackedObjects.splice(index, 1);
@@ -691,6 +738,16 @@ kontra = {
       callbacks.onDown = callback;
     },
 
+	  /**
+	   * Register a function to be called on pointer move.
+	   * @memberof kontra.pointer
+	   *
+	   * @param {function} callback - Function to execute
+	   */
+	  onMove(callback) {
+		  callbacks.onMove = callback;
+	  },
+
     /**
      * Register a function to be called on pointer up.
      * @memberof kontra.pointer
@@ -711,7 +768,16 @@ kontra = {
      */
     pressed(button) {
       return !!pressedButtons[button]
-    }
+    },
+
+    destroy(){
+    	trackedObjects = [];
+		callbacks = {};
+	},
+
+	multitouch(val){
+	  multiTouchEnabled = val;
+	}
   };
 
   // reset object render order on every new frame
